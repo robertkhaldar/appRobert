@@ -1,0 +1,223 @@
+import requests
+from bs4 import BeautifulSoup
+import re
+import mysql.connector
+from sklearn import tree
+from sklearn import preprocessing
+
+
+def Value(price): # price is in format ۹,۸۰۰,۰۰۰,۰۰۰ / convert to -->> 9800000000
+    listNum = price.split(',')
+    result = 0
+    i = len(listNum)
+    i -= 1
+    j = 0
+    while i >= 0:
+        result += int(listNum[j]) * (1000 ** i)
+        i -= 1
+        j += 1
+    return result
+
+def Find_In(address, location): #if can find location in address
+    listAddress = address.split('،')
+    if listAddress.count(location) > 0:
+        return True
+    else:
+        return False
+
+
+def InsertAcasionEstates(location,result,page): # نوع آکازیون
+    rows_acasion = result.find_all('li', attrs={'class': 'blocks ls-super-hot ls-mn sticky_ads'})
+    err = False
+    find_item = 0 #number of found item
+    for row in rows_acasion :
+        address = row.find('div', {'class': 'location'})
+        if Find_In(address.text.strip(),location): #address.text.strip().find(location) != -1 :
+            name = row.find('h2',{'class':'title'})
+            price = row.find('div' , {'class':'price'})
+            price=price.text.strip()
+            if price.find('تومان') != -1: # since very very little records the said "اطلاع از قیمت"
+                pr = price.split('تومان')
+                priceNum = Value(pr[0])
+            else:
+                priceNum = 0
+            #address = row.find('div',{'class':'location'})
+            bed_area_age = row.find('ul' , attrs={'class' : 'left slider_pinfo'})
+            txt = re.sub(r'\s', '', bed_area_age.text.strip())
+            bed = re.findall(r'\d+خواب', txt)
+            bedNum = 0
+            if(len(bed)>0):
+                st=0
+                bedNum = int(bed[0].split('خواب')[0])
+            area = re.findall(r'\d+مترمربع', txt)
+            areaNum = 0
+            if(len(area)>0):
+                st=0
+                areaNum = int(area[0].split('مترمربع')[0])
+            age = re.findall(r'\d+سن', txt)
+            ageNum = 0
+            if(len(age)>0):
+                ageNum = int(age[0].split('سن')[0])
+            description = row.find('p', {'class': 'desc '})
+            #if ageNum != 0:# since most of records don't have age number. so we decline it
+            try:
+                cursor.execute('insert into properties (name,price,address,bed,area,age,description,type) values (\'%s\',\'%i\',\'%s\',\'%i\',\'%i\',\'%i\',\'%s\',\'acasion\')'%(name.text.strip(),priceNum,address.text.strip(),bedNum,areaNum,ageNum,description.text.strip()))
+                find_item += 1 # in this function
+                global num_result
+                num_result += 1 # in total
+            except:
+                print("خطا در ورود اطلاعات در پایگاه داده!" + " صفحه " + page)
+                err = True
+                break
+    #end for regular records
+
+    #cnx.commit()
+    if not err:
+        if find_item > 0:
+            print('تعداد آکازیون ها در این صفحه ' + str(find_item) + ' عدد بود که با موفقیت در پایگاه داده درج شدند.')
+
+#-----------------------------------------------------------------
+
+def InsertSpecialEstates(location,result,page) :
+    rows_special = result.find_all('li', attrs={'class': 'blocks ls-mn sticky_ads'})
+    err = False
+    find_item = 0 #number of found item
+    for row in rows_special :
+        address = row.find('div', {'class': 'location iswrp '})
+        if Find_In(address.text.strip(),location): #address.text.strip().find(location) != -1:
+            name = row.find('h2',{'class':'title'})
+            price = row.find('div' , {'class':'price'})
+            price=price.text.strip()
+            if price.find('تومان') != -1: # since very very little records they said "اطلاع از قیمت" as price
+                pr = price.split('تومان')
+                priceNum = Value(pr[0])
+            else:
+                priceNum = 0
+            #address = row.find('div',{'class':'location iswrp '})
+            bed_area_age = row.find('ul' , attrs={'class' : 'left slider_pinfo'})
+            txt = re.sub(r'\s', '', bed_area_age.text.strip())
+            bed = re.findall(r'\d+خواب', txt)
+            bedNum = 0
+            if(len(bed)>0):
+                st=0
+                bedNum = int(bed[0].split('خواب')[0])
+            area = re.findall(r'\d+مترمربع', txt)
+            areaNum = 0
+            if(len(area)>0):
+                st=0
+                areaNum = int(area[0].split('مترمربع')[0])
+            age = re.findall(r'\d+سن', txt)
+            ageNum = 0
+            if(len(age)>0):
+                ageNum = int(age[0].split('سن')[0])
+            descr = row.find('div', {'class': 'loc-info left'})
+            description = descr.find('p', {'class': ''})
+            #if ageNum != 0:# since most of records don't have age number. so we decline it
+            try:
+                cursor.execute('insert into properties (name,price,address,bed,area,age,description,type) values (\'%s\',\'%i\',\'%s\',\'%i\',\'%i\',\'%i\',\'%s\',\'special\')'%(name.text.strip(),priceNum,address.text.strip(),bedNum,areaNum,ageNum,description.text.strip()))
+                find_item += 1 # in this function
+                global num_result
+                num_result += 1 # in total
+
+            except:
+                print("خطا در ورود اطلاعات در پایگاه داده!" + " صفحه " + str(page))
+                err = True
+                break
+    #end for regular records
+
+    #cnx.commit()
+    if not err:
+        if find_item > 0:
+            print('تعداد املاک ویژه در این صفحه ' + str(find_item) + ' عدد بود که با موفقیت در پایگاه داده درج شدند.')
+
+#-----------------------------------------------------------------
+def Encode(location,address,listAdrsNum):#find related number of location or sample of location in address from listAdrsNum
+    i = 0
+    for adr in address:
+        if adr.find(location) != -1:
+            return listAdrsNum[i]
+        i += 1
+    return -1
+
+
+def Do_Machine_Learning(cursor,location):
+    x = []
+    y = []
+    address = []
+
+    cursor.execute('select * from properties')
+    rows = cursor.fetchall()
+    for row in rows:  # row[1]=name  row[2]=price  row[3]=address  row[4]=bed  row[5]=area  row[6]=age  row[7]=description
+        y.append(row[2])  # price
+        x.append([row[4], row[5], row[6]])
+        address.append(row[3])  # address
+
+    le = preprocessing.LabelEncoder()
+    le.fit(address)
+    listAdrsNum = le.transform(address)
+    i = 0
+    for item in x:
+        item.append(listAdrsNum[i])
+        i += 1
+
+    clf = tree.DecisionTreeRegressor()
+
+    clf = clf.fit(x, y)
+
+    print('مشخصات ملک را برای پیش بینی قیمت وارد نمایید.')
+    bed = int(input('تعداد اتاق : '))
+    area = int(input('متراژ : '))
+    age = int(input('سن بنا : '))
+    new_data = [[bed, area, age, Encode(location , address , listAdrsNum)]]  # [[bed,area,ageaddress numberو]]
+    answer = clf.predict(new_data)
+
+    print('قیمت پیش بینی شده ', answer[0], ' تومان می باشد')
+
+
+#-----------------------------------------------------------------
+
+while True :
+    city = input('لطفا شهر مد نظر خود را وارد نمایید : ')
+    location = input('لطفا محله مد نظر خود را وارد نمایید : ')
+
+    cnx = mysql.connector.connect(user='robertkhaldar',password='Derakhsha9876',host='127.0.0.1',database='realestate')
+
+    cursor = cnx.cursor()
+    #Delete all rows
+    cursor.execute('delete from properties')
+    cnx.commit()
+
+    num_result = 0 # number of found items in total . its enough to find 150 records in total
+    page = 1
+
+    while num_result <=100 :
+        link = 'https://www.ihome.ir/خرید-فروش/املاک/'
+        link += city + '/'
+        link += str(page) + '/'
+
+        print('جستجو در : ' + link)
+        print('لطفا منتظر بمانید ...')
+
+        response = requests.get(link)
+        if response :
+            result = BeautifulSoup(response.text , 'html.parser')
+            InsertAcasionEstates(location,result,page)  # insert for Acasion estates 'آکازیون'
+            InsertSpecialEstates(location,result,page)  # insert for special estates 'ویژه'
+            page += 1
+            print('تا کنون جمعا %i ملک ذخیره شد. ' %num_result , '\n')
+        else:
+            break
+        #end while
+
+    if num_result > 20 :
+        cnx.commit()
+        print('جمعا %i ملک در پایگاه داده ذخیره شد. ' % num_result, '\n')
+        Do_Machine_Learning(cursor,location)
+        cnx.close()
+        break
+    else:
+        print('تعداد املاک موجود در این شهر و محله کمتر از 20 است. '
+              'بدلیل کافی نبودن اطلاعات برای یادگیری ماشین، شهر و یا محله دیگری را وارد نمایید ')
+
+
+
